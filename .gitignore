@@ -1,0 +1,10 @@
+# dependencies
+**/node_modules
+**/lib
+
+# test assets
+**/coverage
+
+# Others
+.DS_Store
+dist
