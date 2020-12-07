@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters: 
+  UserTableName:
+    Type: String
+    Default: ImageStockUsers
+  
+  HashKeyUserTableName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: email
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  HashKeyUserTableType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+
+  HashKeyImageTableName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: imageId
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  HashKeyImageTableType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+
+  RangeKeyImageTableName:
+    Description: RangeType sort key Name
+    Type: String
+    Default: size
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  RangeKeyImageTableType:
+    Description: RangeType sort key Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+  
+  ImageTableName:
+    Type: String
+    Default: ImageStockImage
+
+  ReadCapacityUnits:
+    Description: Provisioned read throughput
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10000
+    ConstraintDescription: must be between 2 and 10000
+
+  WriteCapacityUnits:
+    Description: Provisioned write throughput
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10000
+    ConstraintDescription: must be between 2 and 10000
+
+Resources:
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref UserTableName
+      AttributeDefinitions:
+        -
+          AttributeName: !Ref HashKeyUserTableName
+          AttributeType: !Ref HashKeyUserTableType
+      KeySchema:
+        -
+          AttributeName: !Ref HashKeyUserTableName
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits
+
+  ImageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - 
+          AttributeName: !Ref HashKeyImageTableName
+          AttributeType: !Ref HashKeyImageTableType
+        -
+          AttributeName: !Ref RangeKeyImageTableName
+          AttributeType: !Ref RangeKeyImageTableType
+      KeySchema:
+        - 
+          AttributeName: !Ref HashKeyImageTableName
+          KeyType: HASH
+        -
+          AttributeName: !Ref RangeKeyImageTableName
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits
+      TableName: !Ref ImageTableName

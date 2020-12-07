@@ -1,0 +1,23 @@
+{
+  "name": "image-handler",
+  "version": "1.0.0",
+  "description": "A lambda function for resizing image",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest test/*.spec.js --coverage",
+    "build:init": "rm -rf package-lock.json dist/ node_modules/",
+    "build:zip": "zip -rq image-handler.zip .",
+    "build:dist": "mkdir dist && mv image-handler.zip dist/",
+    "build": "npm run build:init && npm install --arch=x64 --platform=linux --production && npm run build:zip && npm run build:dist"
+  },
+  "author": "Trung Nguyen",
+  "license": "ISC",
+  "dependencies": {
+    "sharp": "^0.26.3"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.798.0",
+    "jest": "^26.6.3",
+    "mocha": "^8.2.1"
+  }
+}

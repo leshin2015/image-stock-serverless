@@ -1,0 +1,849 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Image stock
+
+Parameters: 
+  OriginBucketName:
+    Description: S3 origin bucket name
+    Type: String
+    Default: test-image-stock-origin-bucket
+  
+  DestinationBucketName:
+    Description: S3 destination bucket name
+    Type: String
+    Default: test-image-stock-dest-bucket
+
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  ImageHandlerFuncName:
+    Description: Image handler function name
+    Type: String
+    Default: ResizeImageFunc
+
+  SendImageFuncName:
+    Description: Send image function name
+    Type: String
+    Default: SendImageFunc
+  
+  GetImageFuncName:
+    Description: Get image function name
+    Type: String
+    Default: GetImageFunc
+  
+  ImageHandlerDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+
+  SendImageDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+  
+  QueueName:
+    Description: SQS queue name
+    Type: String
+    Default: test-image-stock-job-queue
+  
+  SizeMediumWidth:
+    Description: The width of medium size for resizing image
+    Type: Number
+    Default: 300
+  
+  SizeSmallWidth:
+    Description: The width of small size for resizing image
+    Type: Number
+    Default: 150
+
+  ImageFormat:
+    Description: Image format using to reformat the origin image
+    Type: String
+    AllowedValues:
+      - jpg
+      - png
+    Default: jpg
+
+  RestApiName:
+    Description: RestApi name
+    Type: String
+    Default: test-image-stock-rest-api
+
+  CognitoUserPoolName:
+    Type: String
+    Default: test-image-stock-cug
+
+  CognitoUserPoolClientName:
+    Type: String
+    Default: test-image-stock-cug-client
+
+  RestAPIAuthorizerName:
+    Type: String
+    Default: test-image-stock-authorizer
+
+  PostConfirmationFuncName:
+    Type: String
+    Default: PostConfirmationFunc
+  
+  ReadCapacityUnits:
+    Description: Provisioned read throughput
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10000
+    ConstraintDescription: must be between 2 and 10000
+
+  WriteCapacityUnits:
+    Description: Provisioned write throughput
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10000
+    ConstraintDescription: must be between 2 and 10000
+  
+  UserTableName:
+    Type: String
+    Default: ImageStockUsers
+  
+  HashKeyUserTableName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: email
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  HashKeyUserTableType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+
+  HashKeyImageTableName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: imageId
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  HashKeyImageTableType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+
+  RangeKeyImageTableName:
+    Description: RangeType sort key Name
+    Type: String
+    Default: size
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  RangeKeyImageTableType:
+    Description: RangeType sort key Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+  
+  ImageTableName:
+    Type: String
+    Default: ImageStockImage
+  
+  SignedUrlExpired:
+    Type: Number
+    Default: 60
+
+Resources:
+  #S3 buckets
+  OriginBucket:
+    Type: AWS::S3::Bucket
+    DependsOn:
+      - JobQueue
+      - S3EventQueuePolicy
+    Properties: 
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: !Ref OriginBucketName
+      NotificationConfiguration: 
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt JobQueue.Arn
+
+  DestinationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: !Ref DestinationBucketName
+
+  #SQS queues
+  JobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref QueueName
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 60
+  
+  S3EventQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    DependsOn:
+      - JobQueue
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - SQS:SendMessage
+            Resource: '*'
+            Condition:
+              ArnLike:
+                aws:SourceArn: 'arn:aws:s3:::*'
+      Queues:
+        - !Ref JobQueue
+
+  #Lambda functions
+  ImageHandlerFunc:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Function get image from s3 and resize
+      FunctionName: !Ref ImageHandlerFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Role: !GetAtt ImageHandlerFuncRole.Arn
+      Runtime: nodejs12.x
+      Timeout: 20
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: image-handler/function.zip
+      Environment:
+        Variables:
+          IMAGE_FORMAT: !Ref ImageFormat
+          SIZE_MEDIUM_WIDTH: !Ref SizeMediumWidth
+          SIZE_SMALL_WIDTH: !Ref SizeSmallWidth
+          DESTINATION_BUCKET: !Ref DestinationBucketName
+          IMAGE_TABLE_NAME: !Ref ImageTable
+      Layers:
+        - !Ref ImageHandlerLib
+
+  PostConfirmationTriggerFunc:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: post-confirmation-trigger/function.zip
+      FunctionName: !Ref PostConfirmationFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Timeout: 10
+      Runtime: nodejs12.x
+      Role: !GetAtt PostConfirmationFuncRole.Arn
+      Environment:
+        Variables:
+          USER_TABLE_NAME: !Ref UserTable
+
+  SendImageFunc:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: send-image/function.zip
+      FunctionName: !Ref SendImageFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Role: !GetAtt SendImageFuncRole.Arn
+      Runtime: nodejs12.x
+      Timeout: 10
+      Environment:
+        Variables:
+          ORIGIN_BUCKET: !Ref OriginBucketName
+          COGNITO_POOL_ID: !Ref CognitoUserPool
+          IMAGE_TABLE_NAME: !Ref ImageTable
+      Layers:
+        - !Ref SendImageLib
+  
+  SendImageFuncVersion:
+    Type: AWS::Lambda::Version
+    Properties: 
+      FunctionName: !Ref SendImageFunc
+      Description: v1
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
+  
+  SendImageFuncDevAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref SendImageFunc
+      FunctionVersion: $LATEST
+      Name: DEV
+
+  SendImageFuncProdAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref SendImageFunc
+      FunctionVersion: !GetAtt SendImageFuncVersion.Version
+      Name: PROD
+
+  SendImageFuncDevRole:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SendImageFuncDevAlias
+      - RestAPI
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SendImageFuncDevAlias
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/POST/images'
+  
+  SendImageFuncProdRole:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SendImageFuncProdAlias
+      - RestAPI
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SendImageFuncProdAlias
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/POST/images'
+
+  GetImageFunc:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: get-image/function.zip
+      FunctionName: !Ref GetImageFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Role: !GetAtt GetImageFuncRole.Arn
+      Runtime: nodejs12.x
+      Timeout: 10
+      Environment:
+        Variables:
+          IMAGE_TABLE_NAME: !Ref ImageTable
+          SIGNED_URL_EXPIRED: !Ref SignedUrlExpired
+
+  GetImageFuncVersion:
+    Type: AWS::Lambda::Version
+    Properties: 
+      FunctionName: !Ref GetImageFunc
+      Description: v1
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
+
+  GetImageFuncDevAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref GetImageFunc
+      FunctionVersion: $LATEST
+      Name: DEV
+
+  GetImageFuncProdAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref GetImageFunc
+      FunctionVersion: !GetAtt GetImageFuncVersion.Version
+      Name: PROD
+
+  GetImageFuncDevRole:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - GetImageFuncDevAlias
+      - RestAPI
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetImageFuncDevAlias
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/GET/images'
+  
+  GetImageFuncProdRole:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - GetImageFuncProdAlias
+      - RestAPI
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetImageFuncProdAlias
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/GET/images'
+
+  #Lambda event source mapping
+  ImageHandlerEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    DependsOn:
+      - ImageHandlerFunc
+      - JobQueue
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn: !GetAtt JobQueue.Arn
+      FunctionName: !GetAtt ImageHandlerFunc.Arn
+
+  #Lambda permissions
+  PostConfirmationTriggerFuncPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - PostConfirmationTriggerFunc
+      - CognitoUserPool
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt  PostConfirmationTriggerFunc.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+  
+  SendImageFuncPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SendImageFunc
+      - RestAPI
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt  SendImageFunc.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/POST/images'
+
+  GetImageFuncPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - GetImageFunc
+      - RestAPI
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt  GetImageFunc.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestAPI}/*/GET/images'
+
+  #Lambda layers
+  ImageHandlerLib:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Ref ImageHandlerDependenciesLayerName
+      Description: Dependencies for the image handler function
+      Content:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: image-handler/lib.zip
+      CompatibleRuntimes:
+        - nodejs12.x
+  
+  SendImageLib:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Ref SendImageDependenciesLayerName
+      Description: Dependencies for the send image function
+      Content:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: send-image/lib.zip
+      CompatibleRuntimes:
+        - nodejs12.x
+
+  #Api-gateway RESTful apis
+  RestAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: RESTful apis for image stock platform
+      Name: !Ref RestApiName
+  
+  RestAPIImageResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt RestAPI.RootResourceId
+      PathPart: images
+      RestApiId: !Ref RestAPI
+  
+  RestAPIPostImageMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+      - SendImageFunc
+      - SendImageFuncProdRole
+      - SendImageFuncDevRole
+    Properties:
+      ApiKeyRequired: false
+      HttpMethod: POST
+      Integration:
+        ConnectionType: INTERNET
+        IntegrationHttpMethod: POST
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS_PROXY
+        Uri: !Join
+          - ''
+          - - 'arn:aws:apigateway:'
+            - !Ref AWS::Region
+            - ':lambda:path/2015-03-31/functions/'
+            - !GetAtt SendImageFunc.Arn
+            - ':${stageVariables.LambdaAlias}/invocations'
+      ResourceId: !Ref RestAPIImageResource
+      RestApiId: !Ref RestAPI
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref RestAPIAuthorizer
+  
+  RestAPIGetImageMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+      - GetImageFunc
+      - GetImageFuncProdRole
+      - GetImageFuncDevRole
+    Properties:
+      ApiKeyRequired: false
+      HttpMethod: GET
+      Integration:
+        ConnectionType: INTERNET
+        IntegrationHttpMethod: POST
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS_PROXY
+        Uri: !Join
+          - ''
+          - - 'arn:aws:apigateway:'
+            - !Ref AWS::Region
+            - ':lambda:path/2015-03-31/functions/'
+            - !GetAtt GetImageFunc.Arn
+            - ':${stageVariables.LambdaAlias}/invocations'
+      ResourceId: !Ref RestAPIImageResource
+      RestApiId: !Ref RestAPI
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref RestAPIAuthorizer
+  
+  RestAPIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: RestAPIPostImageMethod
+    Properties:
+      Description: Lambda API deployment
+      RestApiId: !Ref RestAPI
+  
+  RestAPIDevStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref RestAPIDeployment
+      Description: Lambda API stage dev
+      RestApiId: !Ref RestAPI
+      StageName: dev
+      Variables:
+        LambdaAlias: DEV
+
+  RestAPIProdStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref RestAPIDeployment
+      Description: Lambda API stage dev
+      RestApiId: !Ref RestAPI
+      StageName: prod
+      Variables:
+        LambdaAlias: PROD
+
+  RestAPIAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      RestApiId: !Ref RestAPI
+      Type: COGNITO_USER_POOLS
+      Name: !Ref RestAPIAuthorizerName
+      IdentitySource: method.request.header.AUTHORIZATION
+      ProviderARNs:
+        - !GetAtt CognitoUserPool.Arn
+
+  #Cognito
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Ref CognitoUserPoolName
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationTriggerFunc.Arn
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+      Schema:
+        - 
+          Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      UsernameConfiguration:
+        CaseSensitive: False
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          -
+            Name: verified_email
+            Priority: 1
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Ref CognitoUserPoolClientName
+      CallbackURLs:
+        - https://example.com
+      LogoutURLs:
+        - https://example.com
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - aws.cognito.signin.user.admin
+        - profile
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+  
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: test-image-stock
+
+  # DynamoDB
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref UserTableName
+      AttributeDefinitions:
+        -
+          AttributeName: !Ref HashKeyUserTableName
+          AttributeType: !Ref HashKeyUserTableType
+      KeySchema:
+        -
+          AttributeName: !Ref HashKeyUserTableName
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits
+
+  ImageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - 
+          AttributeName: !Ref HashKeyImageTableName
+          AttributeType: !Ref HashKeyImageTableType
+        -
+          AttributeName: !Ref RangeKeyImageTableName
+          AttributeType: !Ref RangeKeyImageTableType
+      KeySchema:
+        - 
+          AttributeName: !Ref HashKeyImageTableName
+          KeyType: HASH
+        -
+          AttributeName: !Ref RangeKeyImageTableName
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits
+      TableName: !Ref ImageTableName
+
+  #IAM roles
+  ImageHandlerFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: allowSQS
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !Sub ${JobQueue.Arn}
+        -
+          PolicyName: originBucketGetObject
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource: '*'
+        -
+          PolicyName: AllowPutItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:BatchWriteItem
+                Resource: arn:aws:dynamodb:*:*:*
+
+  SendImageFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: originBucketCreateObject
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource: '*'
+        -
+          PolicyName: AllowPutItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: arn:aws:dynamodb:*:*:*
+
+  PostConfirmationFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: AllowPutItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: arn:aws:dynamodb:*:*:*
+
+  GetImageFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: AllowGetItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: arn:aws:dynamodb:*:*:*

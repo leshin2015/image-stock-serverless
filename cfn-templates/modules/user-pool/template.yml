@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters: 
+  CognitoUserPoolName:
+    Type: String
+    Default: test-image-stock-cug
+
+  CognitoUserPoolClientName:
+    Type: String
+    Default: test-image-stock-cug-client
+
+  PostConfirmationFuncName:
+    Type: String
+    Default: PostConfirmationFunc
+  
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  UserTableName:
+    Type: String
+
+Resources: 
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    DependsOn:
+      - PostConfirmationTriggerFunc
+    Properties:
+      UserPoolName: !Ref CognitoUserPoolName
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationTriggerFunc.Arn
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
+      Schema:
+        - 
+          Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      UsernameConfiguration:
+        CaseSensitive: False
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          -
+            Name: verified_email
+            Priority: 1
+
+  # CUG client
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Ref CognitoUserPoolClientName
+      CallbackURLs:
+        - https://example.com
+      LogoutURLs:
+        - https://example.com
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - aws.cognito.signin.user.admin
+        - profile
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+  
+  # CUG domain
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: test-image-stock
+
+  # PostConfirmationTriggerFunc:
+  #   Type: AWS::CloudFormation::Stack
+  #   Properties:
+  #     TemplateURL: triggers/post-confirmation.yml
+  #     Parameters:
+  #       PostConfirmationFuncName: !Ref PostConfirmationFuncName
+  #       LambdaSrcBucketName: !Ref LambdaSrcBucketName
+  #       UserTableName: !Ref UserTableName
+
+  PostConfirmationTriggerFunc:
+    Type: AWS::Lambda::Function
+    DependsOn: 
+      - PostConfirmationFuncRole
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: post-confirmation-trigger/function.zip
+      FunctionName: !Ref PostConfirmationFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Timeout: 10
+      Runtime: nodejs12.x
+      Role: !GetAtt PostConfirmationFuncRole.Arn
+      Environment:
+        Variables:
+          USER_TABLE_NAME: !Ref UserTableName
+
+  PostConfirmationTriggerFuncPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - PostConfirmationTriggerFunc
+      - CognitoUserPool
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt  PostConfirmationTriggerFunc.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+
+  PostConfirmationFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: AllowPutItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: arn:aws:dynamodb:*:*:*
+
+Outputs:
+  CognitoUserPoolID:
+    Value: !Ref CognitoUserPool
+
+  CognitoUserPoolArn:
+    Value: !GetAtt CognitoUserPool.Arn

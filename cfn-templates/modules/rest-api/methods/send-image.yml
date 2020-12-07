@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters:
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  SendImageFuncName:
+    Description: Send image function name
+    Type: String
+    Default: SendImageFunc
+
+  OriginBucketName:
+    Description: S3 origin bucket name
+    Type: String
+    Default: test-image-stock-origin-bucket
+
+  CognitoUserPoolID:
+    Type: String
+
+  ImageTableName:
+    Type: String
+
+  SendImageDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+
+  RestApiId:
+    Type: String
+
+  ResourceId:
+    Type: String
+
+  AuthorizerId:
+    Type: String
+
+Resources: 
+  SendImageFunc:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: send-image/function.zip
+      FunctionName: !Ref SendImageFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Role: !GetAtt SendImageFuncRole.Arn
+      Runtime: nodejs12.x
+      Timeout: 10
+      Environment:
+        Variables:
+          ORIGIN_BUCKET: !Ref OriginBucketName
+          COGNITO_POOL_ID: !Ref CognitoUserPoolID
+          IMAGE_TABLE_NAME: !Ref ImageTableName
+      Layers:
+        - !Ref SendImageLib
+
+  SendImageFuncPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SendImageFunc
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt  SendImageFunc.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApiId}/*/POST/images'
+
+  SendImageFuncVersion:
+    Type: AWS::Lambda::Version
+    Properties: 
+      FunctionName: !Ref SendImageFunc
+      Description: v1
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
+
+  SendImageFuncDevAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref SendImageFunc
+      FunctionVersion: $LATEST
+      Name: DEV
+
+  SendImageFuncProdAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref SendImageFunc
+      FunctionVersion: !GetAtt SendImageFuncVersion.Version
+      Name: PROD
+
+  SendImageFuncDevRole:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SendImageFuncDevAlias
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SendImageFuncDevAlias
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApiId}/*/POST/images'
+  
+  SendImageFuncProdRole:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - SendImageFuncProdAlias
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SendImageFuncProdAlias
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApiId}/*/POST/images'
+
+  SendImageLib:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Ref SendImageDependenciesLayerName
+      Description: Dependencies for the send image function
+      Content:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: send-image/lib.zip
+      CompatibleRuntimes:
+        - nodejs12.x
+
+  RestAPIPostImageMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+      - SendImageFunc
+      - SendImageFuncProdRole
+      - SendImageFuncDevRole
+    Properties:
+      ApiKeyRequired: false
+      HttpMethod: POST
+      Integration:
+        ConnectionType: INTERNET
+        IntegrationHttpMethod: POST
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS_PROXY
+        Uri: !Join
+          - ''
+          - - 'arn:aws:apigateway:'
+            - !Ref AWS::Region
+            - ':lambda:path/2015-03-31/functions/'
+            - !GetAtt SendImageFunc.Arn
+            - ':${stageVariables.LambdaAlias}/invocations'
+      ResourceId: !Ref ResourceId
+      RestApiId: !Ref RestApiId
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref AuthorizerId
+
+  SendImageFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: originBucketCreateObject
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource: '*'
+        -
+          PolicyName: AllowPutItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: arn:aws:dynamodb:*:*:*

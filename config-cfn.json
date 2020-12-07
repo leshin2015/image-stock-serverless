@@ -1,0 +1,16 @@
+{
+    "Parameters": [
+        {
+            "ParameterKey": "OriginBucketName",
+            "ParameterValue": "test-image-stock-origin-bucket"
+        },
+        {
+            "ParameterKey": "DestinationBucketName",
+            "ParameterValue": "test-image-stock-dest-bucket"
+        },
+        {
+            "ParameterKey": "QueueName",
+            "ParameterValue": "test-image-stock-job-queue"
+        }
+    ]
+}

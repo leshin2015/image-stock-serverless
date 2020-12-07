@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters: 
+  PostConfirmationFuncName:
+    Type: String
+    Default: PostConfirmationFunc
+  
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  UserTableName:
+    Type: String
+
+Resources:
+  PostConfirmationTriggerFunc:
+    Type: AWS::Lambda::Function
+    DependsOn: 
+      - PostConfirmationFuncRole
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaSrcBucketName
+        S3Key: post-confirmation-trigger/function.zip
+      FunctionName: !Ref PostConfirmationFuncName
+      Handler: function/index.handler
+      MemorySize: 128
+      Timeout: 10
+      Runtime: nodejs12.x
+      Role: !GetAtt PostConfirmationFuncRole.Arn
+      Environment:
+        Variables:
+          USER_TABLE_NAME: !Ref UserTableName
+
+  PostConfirmationFuncRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - 
+          PolicyName: logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        -
+          PolicyName: AllowPutItemDynamoDB
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: arn:aws:dynamodb:*:*:*
+
+Outputs:
+  FuncArn:
+    Value: !Ref PostConfirmationTriggerFunc.Arn

@@ -1,0 +1,242 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters: 
+  OriginBucketName:
+    Description: S3 origin bucket name
+    Type: String
+    Default: test-image-stock-origin-bucket
+  
+  DestinationBucketName:
+    Description: S3 destination bucket name
+    Type: String
+    Default: test-image-stock-dest-bucket
+
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  ImageHandlerFuncName:
+    Description: Image handler function name
+    Type: String
+    Default: ResizeImageFunc
+
+  SendImageFuncName:
+    Description: Send image function name
+    Type: String
+    Default: SendImageFunc
+  
+  GetImageFuncName:
+    Description: Get image function name
+    Type: String
+    Default: GetImageFunc
+  
+  ImageHandlerDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+  
+  SendImageDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+  
+  QueueName:
+    Description: SQS queue name
+    Type: String
+    Default: test-image-stock-job-queue
+  
+  SizeMediumWidth:
+    Description: The width of medium size for resizing image
+    Type: Number
+    Default: 300
+  
+  SizeSmallWidth:
+    Description: The width of small size for resizing image
+    Type: Number
+    Default: 150
+
+  ImageFormat:
+    Description: Image format using to reformat the origin image
+    Type: String
+    AllowedValues:
+      - jpg
+      - png
+    Default: jpg
+
+  RestApiName:
+    Description: RestApi name
+    Type: String
+    Default: test-image-stock-rest-api
+
+  CognitoUserPoolName:
+    Type: String
+    Default: test-image-stock-cug
+
+  CognitoUserPoolClientName:
+    Type: String
+    Default: test-image-stock-cug-client
+
+  RestAPIAuthorizerName:
+    Type: String
+    Default: test-image-stock-authorizer
+
+  PostConfirmationFuncName:
+    Type: String
+    Default: PostConfirmationFunc
+  
+  ReadCapacityUnits:
+    Description: Provisioned read throughput
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10000
+    ConstraintDescription: must be between 2 and 10000
+
+  WriteCapacityUnits:
+    Description: Provisioned write throughput
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10000
+    ConstraintDescription: must be between 2 and 10000
+  
+  UserTableName:
+    Type: String
+    Default: ImageStockUsers
+  
+  HashKeyUserTableName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: email
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  HashKeyUserTableType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+
+  HashKeyImageTableName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: imageId
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  HashKeyImageTableType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+
+  RangeKeyImageTableName:
+    Description: RangeType sort key Name
+    Type: String
+    Default: size
+    AllowedPattern: '[a-zA-Z0-9]*'
+    MinLength: '1'
+    MaxLength: '2048'
+    ConstraintDescription: must contain only alphanumberic characters
+
+  RangeKeyImageTableType:
+    Description: RangeType sort key Type
+    Type: String
+    Default: S
+    AllowedPattern: '[S|N]'
+    MinLength: '1'
+    MaxLength: '1'
+    ConstraintDescription: must be either S or N
+  
+  ImageTableName:
+    Type: String
+    Default: ImageStockImage
+  
+  SignedUrlExpired:
+    Type: Number
+    Default: 60
+
+Resources:
+  ImageBuckets:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - JobQueue
+    Properties:
+      TemplateURL: modules/image-bucket/template.yml
+      Parameters:
+        OriginBucketName: !Ref OriginBucketName
+        DestinationBucketName: !Ref DestinationBucketName
+        JobQueueArn: !GetAtt JobQueue.Outputs.JobQueueArn
+
+  JobQueue:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: modules/queue/template.yml
+      Parameters:
+        QueueName: !Ref QueueName
+        ImageHandlerFuncName: !Ref ImageHandlerFuncName
+        LambdaSrcBucketName: !Ref LambdaSrcBucketName
+        ImageFormat: !Ref ImageFormat
+        SizeMediumWidth: !Ref SizeMediumWidth
+        SizeSmallWidth: !Ref SizeSmallWidth
+        DestinationBucketName: !Ref DestinationBucketName
+        ImageTableName: !Ref ImageTableName
+        ImageHandlerDependenciesLayerName: !Ref ImageHandlerDependenciesLayerName
+
+  RestAPI:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - CognitoUserPool
+    Properties:
+      TemplateURL: modules/rest-api/template.yml
+      Parameters:
+        RestApiName: !Ref RestApiName
+        LambdaSrcBucketName: !Ref LambdaSrcBucketName
+        SendImageFuncName: !Ref SendImageFuncName
+        OriginBucketName: !Ref OriginBucketName
+        CognitoUserPoolID: !GetAtt CognitoUserPool.Outputs.CognitoUserPoolID
+        CognitoUserPoolArn: !GetAtt CognitoUserPool.Outputs.CognitoUserPoolArn
+        ImageTableName: !Ref ImageTableName
+        SendImageDependenciesLayerName: !Ref SendImageDependenciesLayerName
+        RestAPIAuthorizerName: !Ref RestAPIAuthorizerName
+        GetImageFuncName: !Ref GetImageFuncName
+        SignedUrlExpired: !Ref SignedUrlExpired
+
+  CognitoUserPool:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: modules/user-pool/template.yml
+      Parameters:
+        CognitoUserPoolName: !Ref CognitoUserPoolName
+        CognitoUserPoolClientName: !Ref CognitoUserPoolClientName
+        PostConfirmationFuncName: !Ref PostConfirmationFuncName
+        LambdaSrcBucketName: !Ref LambdaSrcBucketName
+        UserTableName: !Ref UserTableName
+
+  ImageStockDB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: modules/database/template.yml
+      Parameters:
+        UserTableName: !Ref UserTableName
+        HashKeyUserTableName: !Ref HashKeyUserTableName
+        HashKeyUserTableType: !Ref HashKeyUserTableType
+        HashKeyImageTableName: !Ref HashKeyImageTableName
+        HashKeyImageTableType: !Ref HashKeyImageTableType
+        RangeKeyImageTableName: !Ref RangeKeyImageTableName
+        RangeKeyImageTableType: !Ref RangeKeyImageTableType
+        ImageTableName: !Ref ImageTableName
+        ReadCapacityUnits: !Ref ReadCapacityUnits
+        WriteCapacityUnits: !Ref WriteCapacityUnits

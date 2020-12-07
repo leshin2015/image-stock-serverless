@@ -1,0 +1,11 @@
+{
+  "name": "post-confirmation-trigger",
+  "version": "1.0.0",
+  "description": "Cognito User Pool post confirmation trigger",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Trung Nguyen",
+  "license": "ISC"
+}

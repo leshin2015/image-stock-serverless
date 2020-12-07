@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters:
+  RestApiName:
+    Description: RestApi name
+    Type: String
+    Default: test-image-stock-rest-api
+
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  SendImageFuncName:
+    Description: Send image function name
+    Type: String
+    Default: SendImageFunc
+
+  OriginBucketName:
+    Description: S3 origin bucket name
+    Type: String
+    Default: test-image-stock-origin-bucket
+
+  CognitoUserPoolID:
+    Type: String
+
+  ImageTableName:
+    Type: String
+
+  SendImageDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+
+  RestAPIAuthorizerName:
+    Type: String
+    Default: test-image-stock-authorizer
+
+  CognitoUserPoolArn:
+    Type: String
+
+  GetImageFuncName:
+    Description: Get image function name
+    Type: String
+    Default: GetImageFunc
+
+  SignedUrlExpired:
+    Type: Number
+    Default: 120
+
+Resources: 
+  RestAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: RESTful apis for image stock platform
+      Name: !Ref RestApiName
+
+  # Authorizer resources
+  RestAPIAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      RestApiId: !Ref RestAPI
+      Type: COGNITO_USER_POOLS
+      Name: !Ref RestAPIAuthorizerName
+      IdentitySource: method.request.header.AUTHORIZATION
+      ProviderARNs:
+        - !Ref CognitoUserPoolArn
+  
+  # /images resource and methods
+  RestAPIImageResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt RestAPI.RootResourceId
+      PathPart: 'images'
+      RestApiId: !Ref RestAPI
+
+  SendImageMethod:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - RestAPI
+      - RestAPIImageResource
+      - RestAPIAuthorizer
+    Properties:
+      TemplateURL: methods/send-image.yml
+      Parameters:
+        RestApiId: !Ref RestAPI
+        ResourceId: !Ref RestAPIImageResource
+        AuthorizerId: !Ref RestAPIAuthorizer
+        LambdaSrcBucketName: !Ref LambdaSrcBucketName
+        SendImageFuncName: !Ref SendImageFuncName
+        OriginBucketName: !Ref OriginBucketName
+        CognitoUserPoolID: !Ref CognitoUserPoolID
+        ImageTableName: !Ref ImageTableName
+  
+  GetImageMethod:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - RestAPI
+      - RestAPIImageResource
+      - RestAPIAuthorizer
+    Properties:
+      TemplateURL: methods/get-image.yml
+      Parameters:
+        RestApiId: !Ref RestAPI
+        ResourceId: !Ref RestAPIImageResource
+        AuthorizerId: !Ref RestAPIAuthorizer
+        LambdaSrcBucketName: !Ref LambdaSrcBucketName
+        GetImageFuncName: !Ref GetImageFuncName
+        SignedUrlExpired: !Ref SignedUrlExpired
+        ImageTableName: !Ref ImageTableName
+
+  # Deployment and stages
+  RestAPIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - SendImageMethod
+      - GetImageMethod
+    Properties:
+      Description: Lambda API deployment
+      RestApiId: !Ref RestAPI
+
+  RestAPIDevStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref RestAPIDeployment
+      Description: Lambda API stage dev
+      RestApiId: !Ref RestAPI
+      StageName: dev
+      Variables:
+        LambdaAlias: DEV
+
+  RestAPIProdStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref RestAPIDeployment
+      Description: Lambda API stage dev
+      RestApiId: !Ref RestAPI
+      StageName: prod
+      Variables:
+        LambdaAlias: PROD
+
+Outputs:
+  RestApiId:
+    Value: !Ref RestAPI

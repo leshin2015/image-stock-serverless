@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters: 
+  OriginBucketName:
+    Description: S3 origin bucket name
+    Type: String
+    Default: test-image-stock-origin-bucket
+
+  DestinationBucketName:
+    Description: S3 destination bucket name
+    Type: String
+    Default: test-image-stock-dest-bucket
+  
+  JobQueueArn:
+    Type: String
+
+Resources: 
+  OriginBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: !Ref OriginBucketName
+      NotificationConfiguration: 
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !Ref JobQueueArn
+
+  DestinationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: !Ref DestinationBucketName

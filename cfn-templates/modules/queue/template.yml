@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters:
+  QueueName:
+    Description: SQS queue name
+    Type: String
+    Default: test-image-stock-job-queue
+
+  ImageHandlerFuncName:
+    Description: Image handler function name
+    Type: String
+    Default: ResizeImageFunc
+
+  LambdaSrcBucketName:
+    Description: Bucket store src code for lambda function
+    Type: String
+    Default: test-image-stock-lambda-src-bucket
+
+  ImageFormat:
+    Description: Image format using to reformat the origin image
+    Type: String
+    AllowedValues:
+      - jpg
+      - png
+    Default: jpg
+
+  SizeMediumWidth:
+    Description: The width of medium size for resizing image
+    Type: Number
+    Default: 300
+  
+  SizeSmallWidth:
+    Description: The width of small size for resizing image
+    Type: Number
+    Default: 150
+
+  DestinationBucketName:
+    Description: S3 destination bucket name
+    Type: String
+    Default: test-image-stock-dest-bucket
+
+  ImageTableName:
+    Type: String
+
+  ImageHandlerDependenciesLayerName:
+    Description: Dependencies layer name for image handler function
+    Type: String
+    Default: test-image-stock-func-layer
+
+Resources: 
+  JobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref QueueName
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 60
+  
+  S3EventQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    DependsOn:
+      - JobQueue
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - SQS:SendMessage
+            Resource: '*'
+            Condition:
+              ArnLike:
+                aws:SourceArn: 'arn:aws:s3:::*'
+      Queues:
+        - !Ref JobQueue
+
+  ImageHandlerFunc:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: handler/template.yml
+      Parameters:
+        ImageHandlerFuncName: !Ref ImageHandlerFuncName
+        LambdaSrcBucketName: !Ref LambdaSrcBucketName
+        ImageFormat: !Ref ImageFormat
+        SizeMediumWidth: !Ref SizeMediumWidth
+        SizeSmallWidth: !Ref SizeSmallWidth
+        DestinationBucketName: !Ref DestinationBucketName
+        ImageTableName: !Ref ImageTableName
+        ImageHandlerDependenciesLayerName: !Ref ImageHandlerDependenciesLayerName
+        JobQueueArn: !GetAtt JobQueue.Arn
+
+Outputs:
+  JobQueueArn:
+    Value: !GetAtt JobQueue.Arn
