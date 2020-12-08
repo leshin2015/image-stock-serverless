@@ -11,11 +11,11 @@
 # ------------------------------------------------------------------------------
 # Global env variables
 # ------------------------------------------------------------------------------
-export PROJ_DIR='$( cd '$( dirname '${BASH_SOURCE[0]}' )' && pwd )';
-export PROJ_NAME='practice-one';
-export DIST_DIR='dist';
-export S3_SRC_BUCKET='testing-auto-deploy-src';
-export S3_NESTED_STACK_BUCKET='test-nested-stack-cfn-iddt';
+export PROJ_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )";
+export PROJ_NAME="practice-one";
+export DIST_DIR="dist";
+export S3_SRC_BUCKET="testing-auto-deploy-src";
+export S3_NESTED_STACK_BUCKET="test-nested-stack-cfn-iddt";
 
 # Go back to home directory
 function do-home {

@@ -4,7 +4,5 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - ls
-      - chmod +x activate.sh
-      - ./activate.sh
-      - do-package-cfn
+      - mkdir dist
+      - aws cloudformation package --template-file cfn-templates/main.yml --output-template dist/packaged.yml --s3-bucket test-nested-stack-cfn-iddt --region us-east-1
