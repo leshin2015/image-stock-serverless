@@ -11,8 +11,8 @@
 # ------------------------------------------------------------------------------
 # Global env variables
 # ------------------------------------------------------------------------------
-export PROJ_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )";
-export PROJ_NAME="practice-one";
+export PROJ_DIR='$( cd '$( dirname '${BASH_SOURCE[0]}' )' && pwd )';
+export PROJ_NAME='practice-one';
 export DIST_DIR='dist';
 export S3_SRC_BUCKET='testing-auto-deploy-src';
 export S3_NESTED_STACK_BUCKET='test-nested-stack-cfn-iddt';
@@ -42,6 +42,11 @@ function do-validate-cfn() {
 }
 
 function do-package-cfn() {
+    if [ ! -d '$PROJ_DIR/$DIST_DIR' ]
+    then
+        mkdir -p ${PROJ_DIR}/${DIST_DIR}
+    fi
+
     aws cloudformation package --template-file cfn-templates/main.yml --output-template ${PROJ_DIR}/${DIST_DIR}/packaged.yml --s3-bucket ${S3_NESTED_STACK_BUCKET} --region us-east-1
 }
 
