@@ -24,6 +24,7 @@ Parameters:
 
   CognitoUserPoolID:
     Type: String
+    Description: The Cognito user pool id
 
   ImageTableName:
     Type: String
