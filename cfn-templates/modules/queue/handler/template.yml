@@ -129,6 +129,7 @@ Resources:
                   - sqs:DeleteMessage
                   - sqs:GetQueueAttributes
                   - sqs:ChangeMessageVisibility
+                  - sqs:GetQueueAttributes
                 Resource: !Ref JobQueueArn
         -
           PolicyName: originBucketGetObject
