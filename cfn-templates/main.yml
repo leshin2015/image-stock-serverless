@@ -168,11 +168,42 @@ Parameters:
     Type: Number
     Default: 60
 
+  AdminGroupName:
+    Type: String
+    Description: Admin group name
+    Default: AdminGroup
+
+  DevOpsGroupName:
+    Type: String
+    Description: DevOps group name
+    Default: DevOpsGroup
+
+  DeveloperGroupName:
+    Type: String
+    Description: Developer group name
+    Default: DeveloperGroup
+
+  AdminPolicyName:
+    Type: String
+    Description: Admin policy name
+    Default: AdminPolicy
+
+  DevOpsPolicyName:
+    Type: String
+    Description: DevOps policy name
+    Default: DevOpsPolicy
+
+  DeveloperPolicyName:
+    Type: String
+    Description: Developer policy name
+    Default: DeveloperPolicy
+
 Resources:
   ImageBuckets:
     Type: AWS::CloudFormation::Stack
     DependsOn:
       - JobQueue
+    DeletionPolicy: Retain
     Properties:
       TemplateURL: modules/image-bucket/template.yml
       Parameters:
@@ -227,6 +258,7 @@ Resources:
 
   ImageStockDB:
     Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Retain
     Properties:
       TemplateURL: modules/database/template.yml
       Parameters:
@@ -240,3 +272,15 @@ Resources:
         ImageTableName: !Ref ImageTableName
         ReadCapacityUnits: !Ref ReadCapacityUnits
         WriteCapacityUnits: !Ref WriteCapacityUnits
+
+  UserGroupPolicy:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: modules/policies/template.yml
+      Parameters:
+        AdminGroupName: !Ref AdminGroupName
+        DevOpsGroupName: !Ref DevOpsGroupName
+        DeveloperGroupName: !Ref DeveloperGroupName
+        AdminPolicyName: !Ref AdminPolicyName
+        DevOpsPolicyName: !Ref DevOpsPolicyName
+        DeveloperPolicyName: !Ref DeveloperPolicyName

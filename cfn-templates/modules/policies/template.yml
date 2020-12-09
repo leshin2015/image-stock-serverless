@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+
+Parameters:
+  AdminGroupName:
+    Type: String
+    Description: Admin group name
+    Default: AdminGroup
+
+  DevOpsGroupName:
+    Type: String
+    Description: DevOps group name
+    Default: DevOpsGroup
+
+  DeveloperGroupName:
+    Type: String
+    Description: Developer group name
+    Default: DeveloperGroup
+
+  AdminPolicyName:
+    Type: String
+    Description: Admin policy name
+    Default: AdminPolicy
+
+  DevOpsPolicyName:
+    Type: String
+    Description: DevOps policy name
+    Default: DevOpsPolicy
+
+  DeveloperPolicyName:
+    Type: String
+    Description: Developer policy name
+    Default: DeveloperPolicy
+
+Resources: 
+  # User groups
+  AdminGroup:
+    Type: AWS::IAM::Group
+    Description:  The group for users who have full permission for all resources in the project and other user groups.
+    Properties:
+      GroupName: !Ref AdminGroupName
+
+  DevOpsGroup:
+    Type: AWS::IAM::Group
+    Description: The group for users who have permission to do almost all operations on resources in the project.
+    Properties:
+      GroupName: !Ref DevOpsGroupName
+
+  DeveloperGroup:
+    Type: AWS::IAM::Group
+    Description: The group for users who have permission to do some specific operations such as read database, read logs.
+    Properties:
+      GroupName: !Ref DeveloperGroupName
+
+  # Policies for each group
+  AdminPolicy:
+    Type: AWS::IAM::Policy
+    Description: The policy define all permission for Admin group
+    Properties:
+      Groups:
+        - !Ref AdminGroup
+      PolicyName: !Ref AdminPolicyName
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: '*'
+            Resource: '*'
+
+  DevOpsPolicy:
+    Type: AWS::IAM::Policy
+    Description: The policy define all permission for DevOps group
+    Properties:
+      Groups:
+        - !Ref DevOpsGroup
+      PolicyName: !Ref DevOpsPolicyName
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Sid: AllowS3Bucket
+            Effect: Allow
+            Action:
+              - s3:*
+            Resource: '*'
+          - 
+            Sid: AllowCodeBuild
+            Effect: Allow
+            Action:
+              - codebuild:*
+              - cloudwatch:GetMetricStatistics
+            Resource: '*'
+          - 
+            Sid: AllowCloudWatch
+            Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+              - logs:*
+            Resource: '*'
+          -
+            Sid: AllowSQS
+            Effect: Allow
+            Action:
+              - sqs:*
+            Resource: '*'
+          - 
+            Sid: AllowLambda
+            Effect: Allow
+            Action:
+              - lambda:*
+              - logs:DescribeLogGroups
+            Resource: '*'
+          - 
+            Sid: AllowCognito
+            Effect: Allow
+            Action:
+              - cognito-identity:*
+              - cognito-idp:*
+              - cognito-sync:*
+            Resource: '*'
+          - 
+            Sid: AllowDynamoDB
+            Effect: Allow
+            Action:
+              - dynamodb:*
+              - dax:*
+            Resource: '*'
+          - 
+            Sid: AllowApiGateway
+            Effect: Allow
+            Action:
+              - apigateway:*
+            Resource: 'arn:aws:apigateway:*::/*'
+
+  DeveloperPolicy:
+    Type: AWS::IAM::Policy
+    Description: The policy define all permission for Developer group
+    Properties:
+      Groups:
+        - !Ref DeveloperGroup
+      PolicyName: !Ref DeveloperPolicyName
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - 
+            Sid: AllowS3BucketReadOnly
+            Effect: Allow
+            Action:
+              - s3:Get*
+              - s3:List*
+            Resource: '*'
+          - 
+            Sid: AllowCodeBuildReadOnly
+            Effect: Allow
+            Action:
+              - cloudwatch:GetMetricStatistics
+              - codebuild:BatchGet*
+              - codebuild:GetResourcePolicy
+              - codebuild:List*
+              - codebuild:DescribeTestCases
+              - codebuild:DescribeCodeCoverages
+            Resource: '*'
+          - 
+            Sid: AllowCloudWatchReadOnly
+            Effect: Allow
+            Action:
+              - logs:Describe*
+              - logs:Get*
+              - logs:List*
+              - logs:StartQuery
+              - logs:StopQuery
+              - logs:TestMetricFilter
+              - logs:FilterLogEvents
+            Resource: '*'
+          - 
+            Sid: AllowCognitoReadOnly
+            Effect: Allow
+            Action:
+              - cognito-identity:Describe*
+              - cognito-identity:Get*
+              - cognito-identity:List*
+              - cognito-idp:Describe*
+              - cognito-idp:AdminGet*
+              - cognito-idp:AdminList*
+              - cognito-idp:List*
+              - cognito-idp:Get*
+              - cognito-sync:Describe*
+              - cognito-sync:Get*
+              - cognito-sync:List*
+            Resource: '*'
+          - 
+            Sid: AllowDynamoDBReadOnly
+            Effect: Allow
+            Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:Describe*
+              - dynamodb:List*
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:Scan
+            Resource: '*'

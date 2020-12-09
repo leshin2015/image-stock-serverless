@@ -5,6 +5,5 @@ phases:
     commands:
       - echo Build started on `date`
       - mkdir dist
-      - echo HAHAHA
-      - aws cloudformation package --template-file cfn-templates/main.yml --output-template dist/packaged.yml --s3-bucket test-nested-stack-cfn-iddt --region us-east-1
-      - aws cloudformation deploy --template-file dist/packaged.yml --stack-name image-stock-main-stack --region us-east-1 --capabilities CAPABILITY_NAMED_IAM
+      - aws cloudformation package --template-file cfn-templates/main.yml --output-template dist/packaged.yml --s3-bucket ${S3_TEMPLATE_BUCKET} --region ${AWS_REGION}
+      - aws cloudformation deploy --template-file dist/packaged.yml --stack-name ${MAIN_STACK} --region ${AWS_REGION} --capabilities CAPABILITY_NAMED_IAM
