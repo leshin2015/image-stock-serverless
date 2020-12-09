@@ -14,6 +14,7 @@ Parameters:
 
   ImageTableName:
     Type: String
+    Description: The Dynamodb ImageTable name
 
   RestApiId:
     Type: String

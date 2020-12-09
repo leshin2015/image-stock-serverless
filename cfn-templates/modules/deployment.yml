@@ -50,6 +50,7 @@ Resources:
                   - logs:*
                   - s3:*
                   - cloudformation:*
+                  - sqs:*
                 Effect: Allow
                 Resource: '*'
 
