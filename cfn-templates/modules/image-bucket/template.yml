@@ -14,6 +14,7 @@ Parameters:
   
   JobQueueArn:
     Type: String
+    Description: The SQS job queue arn
 
 Resources: 
   OriginBucket:

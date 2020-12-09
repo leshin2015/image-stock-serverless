@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: ---
+Parameters: 
+  CodeBuildProjectName:
+    Type: String
+    Description: The name of codebuild project
+    Default: ImageStockCodeBuild
+
+  GithubRepoUrl:
+    Type: String
+    Description: The github repo url
+
+  GithubBranch:
+    Type: String
+    Description: The github branch that codebuild will be triggered
+    Default: master
+
+  S3TemplateBucket:
+    Type: String
+    Description: The S3 bucket name for storing all relative CloudFormation stack
+  
+  AwsRegion:
+    Type: String
+    Description: The aws region for deploy the CloudFormation stack
+
+  MainStack:
+    Type: String
+    Description: The CloudFormation main stack name
+
+Resources:
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - codebuild:*
+                  - logs:*
+                  - s3:*
+                  - cloudformation:*
+                Effect: Allow
+                Resource: '*'
+
+  CodeBuildSrcCredential:
+    Type: AWS::CodeBuild::SourceCredential
+    Properties:
+      AuthType: PERSONAL_ACCESS_TOKEN
+      ServerType: GITHUB
+      Token: '{{resolve:secretsmanager:GITHUB_ACCESS_TOKEN:SecretString:GITHUB_ACCESS_TOKEN}}'
+  
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref CodeBuildProjectName
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Source:
+        Type: GITHUB
+        Location: !Ref GithubRepoUrl
+        BuildSpec: buildspec.yml
+        Auth:
+          Type: OAUTH
+          Resource: !Ref CodeBuildSrcCredential
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          -
+            - Type: EVENT
+              Pattern: PULL_REQUEST_MERGED
+            - Type: BASE_REF
+              Pattern: !Sub ^refs/heads/${GithubBranch}$
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        EnvironmentVariables:
+          -
+            Name: S3_TEMPLATE_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref S3TemplateBucket
+          -
+            Name: AWS_REGION
+            Type: PLAINTEXT
+            Value: !Ref AwsRegion
+          - 
+            Name: MAIN_STACK
+            Type: PLAINTEXT
+            Value: !Ref MainStack
